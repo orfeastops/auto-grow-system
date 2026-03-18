@@ -12,8 +12,8 @@
 Adafruit_ADS1115 ads;
 
 // ---------- WiFi ----------
-const char* ssid     = "INALAN_2.4G_TjjJtG";
-const char* password = "H7JxdTGa";
+const char* ssid     = "*******_*******";
+const char* password = "******";
 
 // ---------- SERVER ----------
 const char* SERVER  = "https://api.karnagio.org";
