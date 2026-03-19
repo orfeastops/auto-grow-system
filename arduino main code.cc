@@ -1,0 +1,398 @@
+#include <Wire.h>
+#include <Adafruit_ADS1X15.h>
+#include <DHT.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
+#include <time.h>
+
+// ---------- I2C ----------
+#define I2C_SDA 1
+#define I2C_SCL 2
+Adafruit_ADS1115 ads;
+
+// ---------- WiFi ----------
+const char* ssid     = "*******_*******";
+const char* password = "******";
+
+// ---------- SERVER ----------
+const char* SERVER  = "https://api.*********.org";
+const char* API_KEY = "*********";
+
+// ---------- NTP ----------
+const char* ntpServer          = "pool.ntp.org";
+const long  gmtOffset_sec      = 2 * 3600;
+const int   daylightOffset_sec = 0;
+
+// ---------- DHT ----------
+#define DHTPIN  18
+#define DHTTYPE DHT11
+DHT dht(DHTPIN, DHTTYPE);
+
+// ---------- ΡΕΛΕ PINS ----------
+#define RELAY_WATER_1  4
+#define RELAY_WATER_2  5
+#define RELAY_WATER_3  6
+#define RELAY_LIGHT    10   // Άλλαξε από 7 σε 10
+#define RELAY_FAN      9    // Άλλαξε από 8 σε 9
+
+#define RELAY_ON  LOW
+#define RELAY_OFF HIGH
+
+// ---------- SETTINGS ----------
+int   WATER_ON        = 35;
+int   WATER_OFF       = 45;
+int   WATER_DURATION  = 10000;
+float TEMP_ON         = 50.0;
+float TEMP_OFF        = 40.0;
+float HUM_ON          = 70.0;
+float HUM_OFF         = 60.0;
+int   LIGHT_OFF_START = 2;
+int   LIGHT_OFF_END   = 4;
+
+// ---------- KILL SWITCHES ----------
+// "1" = κανονική αυτόματη λειτουργία
+// "0" = manual OVERRIDE OFF (αναγκαστικά κλειστό)
+// Για αντλίες: "1" = ανοιχτό, "0" = κλειστό
+bool LIGHT_OVERRIDE_OFF = false; // false = κανονική λειτουργία
+bool FAN_OVERRIDE_ON    = false; // false = κανονική λειτουργία
+bool PUMP1_ON           = false;
+bool PUMP2_ON           = false;
+bool PUMP3_ON           = false;
+
+// ---------- CALIBRATION ----------
+const int   S1_DRY    = 13995;
+const int   S1_WET    = 6140;
+const float S2_SCALE  = 0.701;
+const float S2_OFFSET = 456;
+const float S3_SCALE  = 1.00;
+const float S3_OFFSET = 910;
+
+// ---------- STATE ----------
+enum PumpState { IDLE, WATERING, WAITING };
+struct Pump {
+  PumpState state;
+  unsigned long startTime;
+  int relayPin;
+};
+
+Pump pump1 = { IDLE, 0, RELAY_WATER_1 };
+Pump pump2 = { IDLE, 0, RELAY_WATER_2 };
+Pump pump3 = { IDLE, 0, RELAY_WATER_3 };
+bool fanOn = false;
+
+bool lastPump1Manual = false;
+bool lastPump2Manual = false;
+bool lastPump3Manual = false;
+
+// ---------- TIMERS ----------
+unsigned long lastDataSend      = 0;
+unsigned long lastSettingsFetch = 0;
+const unsigned long DATA_INTERVAL     = 2000;
+const unsigned long SETTINGS_INTERVAL = 2000;
+
+// ---------- MEDIAN READ ----------
+int16_t readMedian(int channel) {
+  int16_t v[5];
+  for (int i = 0; i < 5; i++) {
+    v[i] = ads.readADC_SingleEnded(channel);
+    delay(5);
+  }
+  for (int i = 0; i < 4; i++)
+    for (int j = i + 1; j < 5; j++)
+      if (v[j] < v[i]) { int16_t t = v[i]; v[i] = v[j]; v[j] = t; }
+  return v[2];
+}
+
+// ---------- RAW -> MOISTURE ----------
+int rawToMoisture(float raw) {
+  int m = map((long)raw, S1_DRY, S1_WET, 0, 100);
+  return constrain(m, 0, 100);
+}
+
+// ---------- FETCH SETTINGS ----------
+void fetchSettings() {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  HTTPClient http;
+  http.begin(String(SERVER) + "/api/settings");
+  http.addHeader("x-api-key", API_KEY);
+
+  int code = http.GET();
+  if (code == 200) {
+    String body = http.getString();
+    JsonDocument doc;
+    deserializeJson(doc, body);
+
+    WATER_ON        = doc["water_on"].as<int>();
+    WATER_OFF       = doc["water_off"].as<int>();
+    WATER_DURATION  = doc["water_duration"].as<int>();
+    TEMP_ON         = doc["temp_on"].as<float>();
+    TEMP_OFF        = doc["temp_off"].as<float>();
+    HUM_ON          = doc["hum_on"].as<float>();
+    HUM_OFF         = doc["hum_off"].as<float>();
+    LIGHT_OFF_START = doc["light_off_start"].as<int>();
+    LIGHT_OFF_END   = doc["light_off_end"].as<int>();
+
+    // Kill switches
+    // light_enabled: "0" = override OFF, "1" = αυτόματο (κανονικό)
+    // fan_enabled:   "0" = αυτόματο,     "1" = override ON
+    // pump_enabled:  "0" = κλειστό,      "1" = ανοιχτό (manual)
+    LIGHT_OVERRIDE_OFF = (String(doc["light_enabled"].as<const char*>()) == "0");
+    FAN_OVERRIDE_ON    = (String(doc["fan_enabled"].as<const char*>())   == "1");
+    PUMP1_ON           = (String(doc["pump1_enabled"].as<const char*>()) == "1");
+    PUMP2_ON           = (String(doc["pump2_enabled"].as<const char*>()) == "1");
+    PUMP3_ON           = (String(doc["pump3_enabled"].as<const char*>()) == "1");
+
+    Serial.println("Settings OK");
+    Serial.print("Light override OFF: "); Serial.println(LIGHT_OVERRIDE_OFF);
+    Serial.print("Fan override ON: ");    Serial.println(FAN_OVERRIDE_ON);
+    Serial.print("Pump1 manual: ");       Serial.println(PUMP1_ON);
+    Serial.print("Pump2 manual: ");       Serial.println(PUMP2_ON);
+    Serial.print("Pump3 manual: ");       Serial.println(PUMP3_ON);
+  } else {
+    Serial.print("Settings fetch error: "); Serial.println(code);
+  }
+  http.end();
+}
+
+// ---------- SEND DATA ----------
+void sendData(int m1, int m2, int m3, float temp, float hum) {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  JsonDocument doc;
+  doc["moisture1"]   = m1;
+  doc["moisture2"]   = m2;
+  doc["moisture3"]   = m3;
+  doc["temperature"] = isnan(temp) ? 0 : temp;
+  doc["humidity"]    = isnan(hum)  ? 0 : hum;
+  doc["pump1"]       = (pump1.state == WATERING || PUMP1_ON) ? 1 : 0;
+  doc["pump2"]       = (pump2.state == WATERING || PUMP2_ON) ? 1 : 0;
+  doc["pump3"]       = (pump3.state == WATERING || PUMP3_ON) ? 1 : 0;
+  doc["fan"]         = fanOn ? 1 : 0;
+
+  struct tm timeinfo;
+  int hour = getLocalTime(&timeinfo) ? timeinfo.tm_hour : -1;
+  bool lightOn = !LIGHT_OVERRIDE_OFF && !(hour >= LIGHT_OFF_START && hour < LIGHT_OFF_END);
+  doc["light"] = lightOn ? 1 : 0;
+
+  String body;
+  serializeJson(doc, body);
+
+  HTTPClient http;
+  http.begin(String(SERVER) + "/api/data");
+  http.addHeader("x-api-key", API_KEY);
+  http.addHeader("Content-Type", "application/json");
+
+  int code = http.POST(body);
+  if (code == 200) {
+    Serial.println("Data στάλθηκε OK");
+  } else {
+    Serial.print("Send error: "); Serial.println(code);
+  }
+  http.end();
+}
+
+// ---------- ΦΩΤΙΣΜΟΣ ----------
+// Κανονικά ΠΑΝΤΑ ανοιχτό εκτός 02:00-04:00
+// Αν LIGHT_OVERRIDE_OFF = true → κλειστό μέχρι να το ξανανοίξεις
+void controlLight() {
+  if (LIGHT_OVERRIDE_OFF) {
+    digitalWrite(RELAY_LIGHT, RELAY_OFF);
+    return;
+  }
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) {
+    digitalWrite(RELAY_LIGHT, RELAY_ON); // Αν δεν έχει ώρα, άναψε
+    return;
+  }
+  int hour = timeinfo.tm_hour;
+  if (hour >= LIGHT_OFF_START && hour < LIGHT_OFF_END) {
+    digitalWrite(RELAY_LIGHT, RELAY_OFF);
+  } else {
+    digitalWrite(RELAY_LIGHT, RELAY_ON);
+  }
+}
+
+// ---------- ΕΞΑΕΡΩΣΗ ----------
+// Κανονικά αυτόματο βάσει θερμοκρασίας/υγρασίας
+// Αν FAN_OVERRIDE_ON = true → ανοιχτό μέχρι να το κλείσεις
+void controlFan(float temp, float hum) {
+  if (FAN_OVERRIDE_ON) {
+    fanOn = true;
+    digitalWrite(RELAY_FAN, RELAY_ON);
+    return;
+  }
+  if (isnan(temp) || isnan(hum)) return;
+  if (!fanOn) {
+    if (temp >= TEMP_ON || hum >= HUM_ON) {
+      fanOn = true;
+      digitalWrite(RELAY_FAN, RELAY_ON);
+      Serial.println(">>> Εξαέρωση ON (auto)");
+    }
+  } else {
+    if (temp < TEMP_OFF && hum < HUM_OFF) {
+      fanOn = false;
+      digitalWrite(RELAY_FAN, RELAY_OFF);
+      Serial.println(">>> Εξαέρωση OFF (auto)");
+    }
+  }
+}
+
+// ---------- PUMP CONTROL ----------
+// Αν manual ON → ποτίζει συνεχώς μέχρι να κλείσεις
+// Αν AUTO → κανονική λειτουργία βάσει υγρασίας
+void controlPump(Pump &pump, int moisture, int sensorID, bool manualOn, bool &lastManual) {
+  if (!manualOn && lastManual) {
+    // Just turned off manual - reset state machine
+    pump.state = IDLE;
+    pump.startTime = 0;
+    digitalWrite(pump.relayPin, RELAY_OFF);
+  }
+  lastManual = manualOn;
+
+  if (manualOn) {
+    digitalWrite(pump.relayPin, RELAY_ON);
+    return;
+  }
+  // AUTO
+  unsigned long now = millis();
+  switch (pump.state) {
+    case IDLE:
+      if (moisture < WATER_ON) {
+        pump.state     = WATERING;
+        pump.startTime = now;
+        digitalWrite(pump.relayPin, RELAY_ON);
+        Serial.print(">>> Αντλία "); Serial.print(sensorID); Serial.println(" ON (auto)");
+      } else {
+        digitalWrite(pump.relayPin, RELAY_OFF);
+      }
+      break;
+    case WATERING:
+      if (now - pump.startTime >= (unsigned long)WATER_DURATION) {
+        pump.state = WAITING;
+        digitalWrite(pump.relayPin, RELAY_OFF);
+        Serial.print(">>> Αντλία "); Serial.print(sensorID); Serial.println(" OFF (auto)");
+      }
+      break;
+    case WAITING:
+      digitalWrite(pump.relayPin, RELAY_OFF);
+      if (moisture > WATER_OFF) {
+        pump.state = IDLE;
+        Serial.print(">>> Αισθητήρας "); Serial.print(sensorID); Serial.println(" - Έτοιμο");
+      }
+      break;
+  }
+}
+
+// ---------- SETUP ----------
+void setup() {
+  Serial.begin(115200);
+  delay(2000);
+
+  Wire.begin(I2C_SDA, I2C_SCL);
+  if (!ads.begin(0x48, &Wire)) {
+    Serial.println("ADS1115 not found!");
+    while (1);
+  }
+  ads.setGain(GAIN_TWOTHIRDS);
+  dht.begin();
+
+  pinMode(RELAY_WATER_1, OUTPUT);
+  pinMode(RELAY_WATER_2, OUTPUT);
+  pinMode(RELAY_WATER_3, OUTPUT);
+  pinMode(RELAY_LIGHT,   OUTPUT);
+  pinMode(RELAY_FAN,     OUTPUT);
+
+  digitalWrite(RELAY_WATER_1, RELAY_OFF);
+  digitalWrite(RELAY_WATER_2, RELAY_OFF);
+  digitalWrite(RELAY_WATER_3, RELAY_OFF);
+  digitalWrite(RELAY_LIGHT,   RELAY_OFF);
+  digitalWrite(RELAY_FAN,     RELAY_OFF);
+
+  // WiFi
+  WiFi.begin(ssid, password);
+  Serial.print("Σύνδεση WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi OK - IP: " + WiFi.localIP().toString());
+
+  // NTP
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+  struct tm timeinfo;
+  int attempts = 0;
+  while (!getLocalTime(&timeinfo) && attempts < 10) {
+    Serial.println("Αναμονή NTP...");
+    delay(1000);
+    attempts++;
+  }
+  Serial.println("Ώρα OK");
+
+  fetchSettings();
+}
+
+// ---------- LOOP ----------
+void loop() {
+
+  int16_t raw0 = readMedian(0);
+  int16_t raw1 = readMedian(1);
+  int16_t raw2 = readMedian(2);
+
+  float raw1_norm = raw1 * S2_SCALE + S2_OFFSET;
+  float raw2_norm = raw2 * S3_SCALE + S3_OFFSET;
+
+  int m1 = rawToMoisture(raw0);
+  int m2 = rawToMoisture(raw1_norm);
+  int m3 = rawToMoisture(raw2_norm);
+
+  float humidity    = dht.readHumidity();
+  float temperature = dht.readTemperature();
+
+  if (!isnan(temperature) && !isnan(humidity)) {
+    if (temperature < -40 || temperature > 80 || humidity < 0 || humidity > 100) {
+      temperature = NAN;
+      humidity    = NAN;
+    }
+  }
+
+  // Serial output
+  Serial.println("=========================================");
+  struct tm timeinfo;
+  if (getLocalTime(&timeinfo)) {
+    char t[20];
+    strftime(t, sizeof(t), "%H:%M:%S", &timeinfo);
+    Serial.print("Ώρα: "); Serial.println(t);
+  }
+
+  const char* stateStr[] = { "IDLE", "ΠΟΤΙΖΕΙ", "ΑΝΑΜΟΝΗ" };
+  Serial.print("Αισθητήρας 1: "); Serial.print(m1); Serial.print("%  Αντλία: "); Serial.println(PUMP1_ON ? "MANUAL ON" : stateStr[pump1.state]);
+  Serial.print("Αισθητήρας 2: "); Serial.print(m2); Serial.print("%  Αντλία: "); Serial.println(PUMP2_ON ? "MANUAL ON" : stateStr[pump2.state]);
+  Serial.print("Αισθητήρας 3: "); Serial.print(m3); Serial.print("%  Αντλία: "); Serial.println(PUMP3_ON ? "MANUAL ON" : stateStr[pump3.state]);
+  Serial.print("Θερμοκρασία: ");  Serial.print(temperature); Serial.println(" °C");
+  Serial.print("Υγρασία αέρα: "); Serial.print(humidity);    Serial.println(" %");
+  Serial.print("Εξαέρωση: ");     Serial.println(FAN_OVERRIDE_ON ? "MANUAL ON" : (fanOn ? "AUTO ON" : "OFF"));
+  Serial.print("Φως: ");          Serial.println(LIGHT_OVERRIDE_OFF ? "MANUAL OFF" : "AUTO");
+
+  // Έλεγχοι
+  controlLight();
+  controlFan(temperature, humidity);
+  controlPump(pump1, m1, 1, PUMP1_ON, lastPump1Manual);
+  controlPump(pump2, m2, 2, PUMP2_ON, lastPump2Manual);
+  controlPump(pump3, m3, 3, PUMP3_ON, lastPump3Manual);
+
+  unsigned long now = millis();
+
+  if (now - lastDataSend >= DATA_INTERVAL) {
+    lastDataSend = now;
+    sendData(m1, m2, m3, temperature, humidity);
+  }
+
+  if (now - lastSettingsFetch >= SETTINGS_INTERVAL) {
+    lastSettingsFetch = now;
+    fetchSettings();
+  }
+
+  delay(3000);
+}
