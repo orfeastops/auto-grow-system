@@ -1,0 +1,13 @@
+# Android Studio / IntelliJ
+.idea/
+.gradle/
+*.iml
+local.properties
+
+# Build outputs
+**/build/
+captures/
+
+# OS generated
+.DS_Store
+Thumbs.db
