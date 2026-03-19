@@ -16,8 +16,8 @@ const char* ssid     = "*******_*******";
 const char* password = "******";
 
 // ---------- SERVER ----------
-const char* SERVER  = "https://api.karnagio.org";
-const char* API_KEY = "greenhouse2024";
+const char* SERVER  = "https://api.*********.org";
+const char* API_KEY = "*********";
 
 // ---------- NTP ----------
 const char* ntpServer          = "pool.ntp.org";
