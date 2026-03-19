@@ -9,7 +9,11 @@ import android.view.ViewGroup;
 import android.widget.TextView;
 import androidx.fragment.app.Fragment;
 import com.google.gson.Gson;
+import com.greenhouse.app.data.AppDatabase;
 import com.greenhouse.app.models.SensorData;
+import com.greenhouse.app.models.SensorHistory;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class DashboardFragment extends Fragment {
 
@@ -22,10 +26,14 @@ public class DashboardFragment extends Fragment {
     private Runnable refreshRunnable;
     private static final int REFRESH_INTERVAL = 30000; // 30 seconds
 
+    private AppDatabase db;
+    private ExecutorService executorService;
+
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
         View view = inflater.inflate(R.layout.fragment_dashboard, container, false);
 
+        // Initialize views
         tvTemperature  = view.findViewById(R.id.tv_temperature);
         tvHumidity     = view.findViewById(R.id.tv_humidity);
         tvLight        = view.findViewById(R.id.tv_light);
@@ -39,16 +47,23 @@ public class DashboardFragment extends Fragment {
         tvLastUpdated  = view.findViewById(R.id.tv_last_updated);
         tvStatus       = view.findViewById(R.id.tv_status);
 
-        // Fetch immediately then every 30 seconds
-        fetchData();
-        refreshRunnable = new Runnable() {
-            @Override
-            public void run() {
+        executorService = Executors.newSingleThreadExecutor();
+        // Initialize database in the background
+        executorService.execute(() -> {
+            db = AppDatabase.getDatabase(getContext());
+            // Once the DB is ready, start fetching data on the main thread
+            handler.post(() -> {
                 fetchData();
-                handler.postDelayed(this, REFRESH_INTERVAL);
-            }
-        };
-        handler.postDelayed(refreshRunnable, REFRESH_INTERVAL);
+                refreshRunnable = new Runnable() {
+                    @Override
+                    public void run() {
+                        fetchData();
+                        handler.postDelayed(this, REFRESH_INTERVAL);
+                    }
+                };
+                handler.postDelayed(refreshRunnable, REFRESH_INTERVAL);
+            });
+        });
 
         return view;
     }
@@ -57,6 +72,7 @@ public class DashboardFragment extends Fragment {
     public void onDestroyView() {
         super.onDestroyView();
         handler.removeCallbacks(refreshRunnable);
+        executorService.shutdown();
     }
 
     private void fetchData() {
@@ -65,6 +81,7 @@ public class DashboardFragment extends Fragment {
             public void onSuccess(String response) {
                 SensorData data = new Gson().fromJson(response, SensorData.class);
                 requireActivity().runOnUiThread(() -> updateUI(data));
+                saveSensorData(data);
             }
             @Override
             public void onError(String error) {
@@ -83,25 +100,20 @@ public class DashboardFragment extends Fragment {
         tvTemperature.setText(String.format("%.1f°C", data.temperature));
         tvHumidity.setText(String.format("%.0f%%", data.humidity));
 
-        // Light
         tvLight.setText(data.light == 1 ? "ON" : "OFF");
         tvLight.setTextColor(data.light == 1 ? 0xFF4CAF50 : 0xFFFF5722);
 
-        // Fan
         tvFan.setText(data.fan == 1 ? "ON" : "OFF");
         tvFan.setTextColor(data.fan == 1 ? 0xFF4CAF50 : 0xFFFF5722);
 
-        // Moisture colors — red if dry, green if ok
         updateMoisture(tvMoisture1, data.moisture1);
         updateMoisture(tvMoisture2, data.moisture2);
         updateMoisture(tvMoisture3, data.moisture3);
 
-        // Pump status
         tvPump1.setText("Pump: " + (data.pump1 == 1 ? "ON 💧" : "OFF"));
         tvPump2.setText("Pump: " + (data.pump2 == 1 ? "ON 💧" : "OFF"));
         tvPump3.setText("Pump: " + (data.pump3 == 1 ? "ON 💧" : "OFF"));
 
-        // Last updated
         tvLastUpdated.setText("Last updated: " + data.timestamp);
     }
 
@@ -114,5 +126,26 @@ public class DashboardFragment extends Fragment {
         } else {
             tv.setTextColor(0xFF4CAF50); // green - good
         }
+    }
+
+    private void saveSensorData(SensorData data) {
+        executorService.execute(() -> {
+            if (db == null) return;
+            SensorHistory history = new SensorHistory();
+            history.timestamp = System.currentTimeMillis();
+            history.temperature = data.temperature;
+            history.humidity = data.humidity;
+            history.moisture1 = (int) data.moisture1;
+            history.moisture2 = (int) data.moisture2;
+            history.moisture3 = (int) data.moisture3;
+            history.pump1_on = data.pump1 == 1;
+            history.pump2_on = data.pump2 == 1;
+            history.pump3_on = data.pump3 == 1;
+            db.sensorHistoryDao().insert(history);
+
+            // Also, clean up old data (older than 2 days)
+            long twoDaysAgo = System.currentTimeMillis() - (2 * 24 * 60 * 60 * 1000);
+            db.sensorHistoryDao().deleteOlderThan(twoDaysAgo);
+        });
     }
 }

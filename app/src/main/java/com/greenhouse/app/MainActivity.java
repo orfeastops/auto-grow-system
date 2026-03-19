@@ -13,6 +13,9 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         BottomNavigationView nav = findViewById(R.id.bottom_navigation);
+        // *** THE ICON FIX ***
+        // Disable the default tint to show the original icon colors.
+        nav.setItemIconTintList(null);
 
         // Default fragment
         loadFragment(new DashboardFragment());
@@ -24,8 +27,12 @@ public class MainActivity extends AppCompatActivity {
                 fragment = new DashboardFragment();
             } else if (id == R.id.nav_controls) {
                 fragment = new ControlsFragment();
-            } else {
+            } else if (id == R.id.nav_settings) {
                 fragment = new SettingsFragment();
+            } else if (id == R.id.nav_history) {
+                fragment = new HistoryFragment();
+            } else {
+                fragment = new DashboardFragment(); // Default to dashboard
             }
             loadFragment(fragment);
             return true;
