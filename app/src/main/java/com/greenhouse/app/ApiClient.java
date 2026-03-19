@@ -5,8 +5,8 @@ import java.io.IOException;
 
 public class ApiClient {
 
-    private static final String BASE_URL = "https://api.karnagio.org";
-    private static final String API_KEY  = "greenhouse2024";
+    private static final String BASE_URL = "https://api.*********.org";
+    private static final String API_KEY  = "*******";
 
     private static final OkHttpClient client = new OkHttpClient();
     private static final MediaType JSON = MediaType.get("application/json");
