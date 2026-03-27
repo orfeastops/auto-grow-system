@@ -57,7 +57,7 @@ A fully autonomous indoor plant monitoring and control system built from scratch
 - SQLite database for historical readings and configuration persistence
 - Managed with **PM2** for process resilience and auto-restart
 - Exposed securely via **Cloudflare Tunnel** (no port forwarding required)
-- Endpoint: `api.karnagio.org`
+- Endpoint: `api.**********.org`
 
 ### Android App (Java)
 - **Dashboard**: Real-time temperature, humidity, lighting status, ventilation status, and per-plant soil moisture with color-coded levels
