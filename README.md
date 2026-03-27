@@ -8,7 +8,10 @@ A fully autonomous indoor plant monitoring and control system built from scratch
 
 | Dashboard | Controls | Settings |
 |:-:|:-:|:-:|
-| ![Dashboard](screenshots/dashboard.jpg) | ![Controls](screenshots/controls.jpg) | ![Settings](screenshots/settings.jpg) |
+| ![Dashboard](dashboard.jpg) 
+| ![Controls](controls.jpg) 
+| ![Settings](settings.jpg) 
+|
 | Live sensor readings & per-plant soil moisture | System kill switches & pump overrides | Configurable thresholds for all automation logic |
 
 ---
