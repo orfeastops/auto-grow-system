@@ -90,12 +90,12 @@ A fully autonomous indoor plant monitoring and control system built from scratch
 ## 🚀 Setup Instructions
 
 ### Prerequisites
-- Node.js ≥ 18
-- npm
+- Node.js ≥ 18 (for local dev)
+- Docker & Docker Compose (for containerized deployment)
 - Android Studio (for app)
 - Arduino IDE (for firmware)
 
-### Backend Setup
+### Backend Setup (Local)
 
 ```bash
 git clone https://github.com/orfeastops/auto-grow-system.git
@@ -104,6 +104,29 @@ npm install
 cp .env.example .env
 # Edit .env: API_KEY=your-secret, PORT=3000
 npm start
+```
+
+### Backend Setup (Docker - Recommended)
+
+**One-liner:**
+```bash
+docker-compose up -d
+```
+
+This automatically:
+- Builds the Node.js backend
+- Creates SQLite database
+- Exposes API on `http://localhost:3000`
+- Includes health checks
+
+**View logs:**
+```bash
+docker-compose logs -f greenhouse-api
+```
+
+**Stop:**
+```bash
+docker-compose down
 ```
 
 **Production (with PM2):**
