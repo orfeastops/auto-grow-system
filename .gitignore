@@ -8,6 +8,8 @@ local.properties
 **/build/
 captures/
 
-# OS generated
-.DS_Store
-Thumbs.db
+# Env and data files
+.env
+greenhouse.db
+node_modules/
+package-lock.json
