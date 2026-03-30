@@ -1,6 +1,5 @@
 # Android Studio / IntelliJ
 .idea/
-.gradle/
 *.iml
 local.properties
 
@@ -8,8 +7,14 @@ local.properties
 **/build/
 captures/
 
-# Env and data files
+# Env and secrets
 .env
 greenhouse.db
+
+# Dependencies
 node_modules/
 package-lock.json
+
+# OS generated
+.DS_Store
+Thumbs.db
