@@ -41,7 +41,7 @@ public class HistoryTableActivity extends AppCompatActivity {
     }
 
     private void loadData() {
-        db.sensorHistoryDao().getHistory(20000).observe(this, history -> {
+        db.sensorHistoryDao().observeHistory(20000).observe(this, history -> {
             if (history != null) {
                 updateTable(history);
             }

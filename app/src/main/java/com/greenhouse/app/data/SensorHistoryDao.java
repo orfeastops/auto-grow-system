@@ -1,5 +1,6 @@
 package com.greenhouse.app.data;
 
+import androidx.lifecycle.LiveData;
 import androidx.room.Dao;
 import androidx.room.Insert;
 import androidx.room.Query;
@@ -13,6 +14,9 @@ public interface SensorHistoryDao {
 
     @Query("SELECT * FROM sensor_history ORDER BY timestamp DESC LIMIT :limit")
     List<SensorHistory> getHistory(int limit);
+
+    @Query("SELECT * FROM sensor_history ORDER BY timestamp DESC LIMIT :limit")
+    LiveData<List<SensorHistory>> observeHistory(int limit);
 
     @Query("DELETE FROM sensor_history WHERE timestamp < :timestamp")
     void deleteOlderThan(long timestamp);
