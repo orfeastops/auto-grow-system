@@ -62,7 +62,7 @@ dependencies {
     ksp("androidx.room:room-compiler:2.6.1")
 
     // Table view
-    implementation("de.codecrafters.tableview:tableview:2.8.0")
+    implementation("com.github.ISchwarz23:SortableTableView:2.8.1")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
