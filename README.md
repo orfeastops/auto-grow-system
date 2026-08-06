@@ -1,304 +1,146 @@
-# 🌿 Smart Grow Room Automation System
+# Smart Grow Room Automation System
 
-A fully autonomous indoor plant monitoring and control system built from scratch — spanning embedded firmware, cloud backend, and a native Android application. Designed and developed as a solo end-to-end project.
+[![CI](https://github.com/orfeastops/auto-grow-system/actions/workflows/ci.yml/badge.svg)](https://github.com/orfeastops/auto-grow-system/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
----
+An end-to-end IoT prototype that monitors an indoor grow space and automates irrigation, lighting, and ventilation. I designed and implemented the complete path from ESP32-S3 firmware to a Node.js API and native Android application.
 
-## 📸 Screenshots
+## At a glance
 
-| Dashboard | Controls | Settings |
+- **Embedded control:** three soil-moisture channels, temperature/humidity sensing, relay outputs, hysteresis, and NTP-based schedules.
+- **Backend:** Express REST API with SQLite persistence and environment-based API-key authentication.
+- **Mobile client:** native Android app for live readings, manual overrides, configuration, and history.
+- **Deployment:** Docker-ready backend with health checks and optional Cloudflare Tunnel access.
+- **Project role:** solo architecture, implementation, integration, and prototype testing.
+
+## Application screenshots
+
+| Live dashboard | Manual controls | Configuration |
 |:-:|:-:|:-:|
-| ![Dashboard](Dashboard.jpg) | ![Controls](Controls.jpg) | ![Settings](settings.jpg) |
-| Live sensor readings & per-plant soil moisture | System kill switches & pump overrides | Configurable thresholds for all automation logic |
+| ![Dashboard showing sensor readings](Dashboard.jpg) | ![Controls for pumps, fan, and lighting](Controls.jpg) | ![Automation threshold settings](settings.jpg) |
 
----
+## System architecture
 
-## ✅ Project Status
-- [x] ESP32 firmware (Arduino C++)
-- [x] Backend REST + SQLite server (Node.js, Express)
-- [x] Android app (Java, OkHttp + Gson)
-- [x] Real-time states + historical data
-- [x] Security with API key header
-- [x] Local dev tests passed
-
-## 🏗️ System Architecture
-
-```
-┌─────────────────────────┐
-│      Android App        │  ← Java, Android Studio
-│  Dashboard / Controls   │
-│       / Settings        │
-└────────────┬────────────┘
-             │ HTTPS REST + API Key
-             ▼
-┌─────────────────────────┐
-│   Node.js / Express     │  ← Ubuntu server, PM2
-│   SQLite Database       │
-│   Cloudflare Tunnel     │  ← api.example.org
-└────────────┬────────────┘
-             │ HTTP POST / GET
-             ▼
-┌─────────────────────────┐
-│      ESP32-S3           │  ← C++ / Arduino framework
-│  Sensors · Relays · NTP │
-└─────────────────────────┘
+```mermaid
+flowchart LR
+    A["Soil, temperature, and humidity sensors"] --> B["ESP32-S3 controller"]
+    B --> C["Pumps, lighting, and ventilation relays"]
+    B -->|"Authenticated REST requests"| D["Node.js / Express API"]
+    D --> E["SQLite history and settings"]
+    F["Native Android app"] -->|"HTTPS REST requests"| D
 ```
 
----
+The controller performs the time-critical automation locally. The backend stores measurements and configuration, while the Android client provides remote visibility and control. This separation allows local automation to continue when the mobile application is not connected.
 
-## ✨ Features
+## What I implemented
 
-### Firmware (ESP32-S3)
-- **Soil moisture monitoring** via ADS1115 ADC (3 capacitive sensors)
-- **Temperature & humidity** via DHT11
-- **Automated watering** with hysteresis (35%-45% threshold per plant)
-- **NTP-synced lighting** (22h on / 2h off, timezone-aware)
-- **Ventilation control** (hysteresis via temperature + humidity)
-- WiFi with auto-reconnect
+### ESP32-S3 firmware
 
-### Backend (Node.js / Express)
-- REST API (sensor data + configuration)
-- SQLite persistence (readings + settings)
-- PM2 managed process
-- Cloudflare Tunnel support
-- API key authentication
+- Three capacitive soil-moisture inputs through an ADS1115 ADC.
+- DHT11 temperature and humidity acquisition.
+- Per-channel irrigation thresholds with hysteresis.
+- Scheduled grow-light control synchronized through NTP.
+- Temperature/humidity-based ventilation logic.
+- Wi-Fi reconnection and periodic telemetry uploads.
 
-### Android App (Java)
-- **Dashboard**: Real-time sensors, pump status, color-coded soil levels
-- **Controls**: Kill switches + pump overrides with live indicators
-- **Settings**: Full remote configuration of automation thresholds
+### Node.js backend
 
----
+- REST endpoints for measurements, history, configuration, and health status.
+- SQLite tables for time-series readings and persistent automation settings.
+- API-key middleware configured through environment variables.
+- Docker image, Compose configuration, and container health checks.
 
-## 🔧 Hardware
+### Android application
 
-| Component | Role |
+- Live sensor and actuator dashboard.
+- Manual pump, fan, and light overrides.
+- Remote threshold configuration.
+- Local persistence for historical readings.
+
+## Technology stack
+
+| Layer | Technology |
 |---|---|
-| ESP32-S3 | Main microcontroller |
-| ADS1115 | 16-bit ADC for soil sensors |
-| Capacitive Soil Sensors (×3) | Per-plant moisture |
-| DHT11 | Temperature & humidity |
-| Relay Module (×5) | Pump + light + fan control |
-| Water Pumps (×3) | Automated irrigation |
-| Grow Light | NTP-scheduled |
-| Ventilation Fan | Hysteresis-controlled |
+| Controller | ESP32-S3, C++/Arduino |
+| Sensors | ADS1115, capacitive soil sensors, DHT11 |
+| Backend | Node.js, Express, SQLite |
+| Mobile | Android, Java, OkHttp, Gson, Room |
+| Deployment | Docker, Docker Compose, optional Cloudflare Tunnel |
 
-**Estimated cost: ~40€**
+## Repository structure
 
----
+- `arduino main code.cc` — ESP32-S3 prototype firmware.
+- `server` — Express/SQLite backend entry point.
+- `app/` — native Android application.
+- `Dockerfile`, `docker-compose.yml` — backend containerization.
+- `.env.example` — required local configuration template.
+- `Dashboard.jpg`, `Controls.jpg`, `settings.jpg` — application screenshots.
 
-## 🚀 Setup Instructions
+## Running the backend
 
-### Prerequisites
-- Node.js ≥ 18 (for local dev)
-- Docker & Docker Compose (for containerized deployment)
-- Android Studio (for app)
-- Arduino IDE (for firmware)
-
-### Backend Setup (Local)
+### Local Node.js
 
 ```bash
 git clone https://github.com/orfeastops/auto-grow-system.git
 cd auto-grow-system
-npm install
 cp .env.example .env
-# Edit .env: API_KEY=your-secret, PORT=3000
+# Replace the placeholder in .env with a strong API key.
+npm install
 npm start
 ```
 
-### Backend Setup (Docker - Recommended)
+### Docker Compose
 
-**One-liner:**
-```bash
-docker-compose up -d
-```
-
-This automatically:
-- Builds the Node.js backend
-- Creates SQLite database
-- Exposes API on `http://localhost:3000`
-- Includes health checks
-
-**View logs:**
-```bash
-docker-compose logs -f greenhouse-api
-```
-
-**Stop:**
-```bash
-docker-compose down
-```
-
-**Production (with PM2):**
-```bash
-pm2 start server --name greenhouse-api
-pm2 save
-pm2 startup
-```
-
-**Cloudflare Tunnel (public access):**
-```bash
-cloudflared tunnel create greenhouse
-cloudflared tunnel route dns greenhouse api.yourdomain.org
-cloudflared tunnel run greenhouse
-```
-
-### Android App
+Create `.env` first; startup intentionally fails if `API_KEY` is missing.
 
 ```bash
-# Open in Android Studio, update ApiClient.BASE_URL
-# Build and install
-./gradlew assembleDebug
+cp .env.example .env
+# Edit .env, then:
+docker compose up -d --build
+docker compose logs -f greenhouse-api
 ```
 
-### ESP32 Firmware
+The API is exposed locally on port `3000` by default.
 
-Upload `arduino main code.cc` via Arduino IDE to ESP32-S3.
+## API overview
 
----
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/data` | Upload a sensor/actuator snapshot |
+| `GET` | `/api/data/latest` | Read the latest snapshot |
+| `GET` | `/api/data/history?hours=N` | Read historical measurements |
+| `GET` | `/api/settings` | Read automation settings |
+| `POST` | `/api/settings` | Update an automation setting |
+| `GET` | `/api/health` | Container/service health check |
 
-## 📡 API Endpoints
+All routes except the health check require the `x-api-key` header.
 
-| Method | Path | Auth | Description |
-|---|---|---|---|
-| POST | `/api/data` | API Key | ESP32 sensor upload |
-| GET | `/api/data/latest` | API Key | Latest snapshot |
-| GET | `/api/data/history?hours=N` | API Key | Historical data |
-| GET | `/api/settings` | API Key | Read settings |
-| POST | `/api/settings` | API Key | Update setting |
-| GET | `/api/health` | Open | Health check |
+## Android configuration
 
-**Example:**
-```bash
-curl -H 'x-api-key: secret' http://localhost:3000/api/settings
-curl -X POST -H 'x-api-key: secret' -H 'Content-Type: application/json' \
-  -d '{"key":"light_enabled","value":"0"}' http://localhost:3000/api/settings
+Keep endpoint and API-key values outside the Java source. Add them to your local, untracked `~/.gradle/gradle.properties` file:
+
+```properties
+API_BASE_URL=https://api.example.org
+API_KEY=replace-with-the-same-strong-api-key
 ```
 
----
+The build exposes these local values through generated `BuildConfig` fields. Repository defaults are non-functional placeholders.
 
-## 🔐 Security
+## Validation and limitations
 
-- Store `API_KEY` in `.env` (never commit)
-- Use `.env.example` template with placeholders
-- `greenhouse.db` excluded via `.gitignore`
-- HTTPS via Cloudflare Tunnel for production
-- Rotate keys periodically
+- The integrated prototype was exercised locally with real sensors, relay outputs, and manual API smoke tests.
+- The repository includes basic build/syntax checks; broader automated integration and hardware-in-the-loop testing remain future work.
+- API-key authentication is appropriate for this prototype but would be replaced with per-device credentials and stronger authorization for a multi-user production deployment.
+- Relay isolation, electrical protection, watchdog behavior, and failure-safe states must be reviewed before unattended operation.
 
----
+## Roadmap
 
-## 📁 Repository Structure
+- Historical charts and configurable alert notifications.
+- OTA firmware updates.
+- Multi-room/device support.
+- Hardware-in-the-loop tests and structured observability.
+- Per-device authentication and key rotation.
 
-```
-.gitignore                 # Excludes .env, node_modules, *.db
-.env.example               # Environment template
-README.md                  # This file
-package.json               # Dependencies
-server                     # Express backend
-arduino main code.cc       # ESP32 firmware
-app/                       # Android application
-html/                      # Web UI (React)
-Dashboard.jpg              # Screenshots
-Controls.jpg
-settings.jpg
-```
+## License
 
----
-
-## 🧪 Testing
-
-Local verification passed with all endpoints tested via curl.
-
-**Smoke test:**
-```bash
-PORT=3001 API_KEY=test npm start &
-curl -H 'x-api-key: test' http://localhost:3001/api/health
-curl -H 'x-api-key: test' http://localhost:3001/api/settings
-```
-
----
-
-## 🔮 Roadmap
-
-- [ ] Push notifications (moisture alerts)
-- [ ] Historical charts in app
-- [ ] OTA firmware updates
-- [ ] Multi-room support
-- [ ] OAuth2 authentication
-- [ ] Docker support
-- [ ] Firebase Cloud Messaging
-
----
-
-## 🛠️ Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Microcontroller | ESP32-S3, C++ (Arduino) |
-| Sensors | ADS1115, DHT11 |
-| Backend | Node.js, Express, SQLite |
-| Process Mgmt | PM2 |
-| Tunneling | Cloudflare Tunnel |
-| Mobile | Android (Java) |
-
----
-
-## 👤 Author
-
-**Orfeas** — Solo end-to-end design, build, testing.
-
-- GitHub: [@orfeastops](https://github.com/orfeastops)
-- Repo: [github.com/orfeastops/auto-grow-system](https://github.com/orfeastops/auto-grow-system)
-
----
-
-## 📄 License
-
-Open source. Adapt freely for your projects.
-
----
-1. `cd /home/linux/Desktop/greenhouseapp/auto-grow-system`
-2. `npm install`
-3. `cp .env.example .env`
-4. Edit `.env`:
-   - `API_KEY=your-secret-key`
-   - `PORT=3000`
-5. `node server`
-
-### Start with PM2 (production)
-```bash
-pm i -g pm2
-pm2 start server --name greenhouse-api --update-env
-pm2 save
-```
-
-### Cloudflare tunnel (optional for public access)
-*Configure `cloudflared` as tunnel*:\
-`cloudflared tunnel create greenhouse`\
-`cloudflared tunnel route dns greenhouse api.example.org`\
-`cloudflared tunnel run greenhouse`
-
-**APP URL**: `https://api.example.org`
-
-## 🔐 API key
-the backend expects `x-api-key` header on /api/data,/api/settings,/api/data/* endpoints.
-
-## 📘 Node API
-| Method | Path | Auth | Description |
-|---|---|---|---|
-| POST | /api/data | API Key | ESP32 sends sensor state |
-| GET | /api/data/latest | API Key | Latest sensor snapshot |
-| GET | /api/data/history?hours=N | API Key | History (default 24h) |
-| GET | /api/settings | API Key | Read settings |
-| POST | /api/settings | API Key | Write setting |
-| GET | /api/health | open | Health check |
-
-## 📲 Android setup
-1. Open `app/` in Android Studio.
-2. Set `ApiClient.BASE_URL` to your backend host (e.g. `https://api.example.org`).
-3. Make sure `API_KEY` is the same as in server `.env`.
-4. Build & run.
-
-## 💬 Support
-
-For questions or issues, please open an issue on GitHub.
+Released under the [MIT License](LICENSE).

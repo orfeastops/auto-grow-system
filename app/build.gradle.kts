@@ -4,6 +4,9 @@ plugins {
     id("com.google.devtools.ksp") version "1.9.22-1.0.17"
 }
 
+val apiBaseUrl = (project.findProperty("API_BASE_URL") as String?) ?: "https://api.example.org"
+val apiKey = (project.findProperty("API_KEY") as String?) ?: "REPLACE_ME"
+
 android {
     namespace = "com.greenhouse.app"
     compileSdk = 34
@@ -15,6 +18,8 @@ android {
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
+        buildConfigField("String", "API_KEY", "\"$apiKey\"")
     }
 
     buildTypes {
@@ -32,6 +37,7 @@ android {
     }
     buildFeatures {
         viewBinding = true
+        buildConfig = true
     }
 }
 

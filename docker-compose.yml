@@ -7,9 +7,9 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - PORT=3000
-      - API_KEY=${API_KEY:-greenhouse2024}
-      - NODE_ENV=production
+      PORT: 3000
+      API_KEY: "${API_KEY:?Set API_KEY in .env before starting the service}"
+      NODE_ENV: production
     volumes:
       - ./greenhouse.db:/app/greenhouse.db
     restart: unless-stopped

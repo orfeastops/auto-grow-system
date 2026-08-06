@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  backend-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install backend dependencies
+        run: npm install
+      - name: Check backend syntax
+        run: node --check server
+      - name: Verify configuration guard
+        run: |
+          if API_KEY= node server >/tmp/server.log 2>&1; then
+            echo "Server unexpectedly started without API_KEY"
+            exit 1
+          fi
+          grep -q "API_KEY is required" /tmp/server.log
+
+  android-unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+      - name: Run Android unit tests
+        run: ./gradlew testDebugUnitTest
